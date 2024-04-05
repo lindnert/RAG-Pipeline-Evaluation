@@ -1,6 +1,8 @@
 import os
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import CacheBackedEmbeddings
+from langchain.storage import LocalFileStore
 
 def load_from_local() -> list:
     docs = []
@@ -20,3 +22,10 @@ def chunk(docs: list) -> list:
         chunks = text_splitter.split_documents(doc)
         chunked_docs.extend(chunks)
     return chunked_docs
+
+def cache_embeddings(embeddings):
+    store = LocalFileStore("./cache/")
+    cached_embedder = CacheBackedEmbeddings.from_bytes_store(
+        embeddings, store, namespace=embeddings.model
+    )
+    return cached_embedder
