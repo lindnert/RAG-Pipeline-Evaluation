@@ -9,7 +9,7 @@ import langchain
 import utils
 import pandas as pd
 from bert_score import score as bert_score
-
+from bleurt import score as bleurt_score
 
 #from datasets import load_dataset
 
@@ -28,7 +28,7 @@ if embedding_to_use == "openai":
 if data_to_use == "ms_marco":
     # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
     df = pd.read_parquet('0000.parquet')
-    base_data = df.iloc[1500:1501]
+    base_data = df.iloc[1200:1202]
 
     passages_series = base_data["passages"]
     passages = passages_series.apply(lambda x: x['passage_text']).to_list()
@@ -84,11 +84,18 @@ chain = (
         | StrOutputParser()
 )
 
-rouge_scores_average = {
+rouge_scores_avg = {
     'rouge-1 (F-Score)': 0,
     'rouge-2 (F-Score)': 0,
     'rouge-l (F-Score)': 0
 }
+
+bleurt_scores_avg = []
+
+bert_scores_avg = {"bert_P": 0, "bert_R": 0, "bert_F1": 0}
+
+checkpoint = "bleurt/BLEURT-20"
+bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
 
 count = 0  # This will be used for all metrics
 
@@ -98,19 +105,33 @@ for index, question in enumerate(questions):
         system_answer = chain.invoke(question)
         rouge_scores = utils.get_rouge_scores(system_answer, gold_answer)
         for score in rouge_scores:
-            rouge_scores_average[score['Metric']] += score['Result']
+            rouge_scores_avg[score['Metric']] += score['Result']
 
-        bleurt_score = utils.get_bleurt_score(gold_answer, system_answer)
-        print(f'BLEURT Score: {bleurt_score}')
+        bleurt_score = utils.get_bleurt_score(bleurt_scorer, gold_answer, system_answer)
+        bleurt_scores_avg.extend(bleurt_score)
+
+        bert_P, bert_R, bert_F1 = bert_score([system_answer], [gold_answer], lang="en", model_type="bert-base-uncased")
+        bert_P, bert_R, bert_F1 = bert_P.item(), bert_R.item(), bert_F1.item()
+        bert_scores_avg["bert_P"] += bert_P
+        bert_scores_avg["bert_R"] += bert_R
+        bert_scores_avg["bert_F1"] += bert_F1
+
         count += 1
         print(f'Question: {question}')
-        print(f'Answer by System: {system_answer} \n\n')
-        print(f'Gold Answer: {gold_answer} \n\n')
+        print(f'Answer by System: {system_answer}')
+        print(f'Gold Answer: {gold_answer}\n')
         print(f'Rouge Scores: {rouge_scores}')
+        print(f'BLEURT Score: {bleurt_score}')
+        print(f'BERT Precision, Recall and F1: {bert_P, bert_R, bert_F1}')
+        print('\n----------------------------------')
 
-for score_type in rouge_scores_average:
-    rouge_scores_average[score_type] /= count
-    print(f'{score_type} Average: {rouge_scores_average[score_type]}')
+for score_type in rouge_scores_avg:
+    rouge_scores_avg[score_type] /= count
+    print(f'{score_type} Average: {rouge_scores_avg[score_type]}')
 
+bleurt_score_avg = sum(bleurt_scores_avg) / count
+print(f'BLEURT Score Average: {bleurt_score_avg}')
 
-
+for score_type in bert_scores_avg:
+    bert_scores_avg[score_type] /= count
+    print(f'{score_type} Average: {bert_scores_avg[score_type]}')

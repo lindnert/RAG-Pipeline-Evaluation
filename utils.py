@@ -45,7 +45,5 @@ def get_rouge_scores(text1: str, text2: str):
             rouge_scores_out.append({"Metric": f"{metric} ({label})", "Result": eval_score,})
     return rouge_scores_out
 
-def get_bleurt_score(gold_answer: str, system_answer: str):
-    checkpoint = "bleurt/BLEURT-20"
-    bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
+def get_bleurt_score(bleurt_scorer, gold_answer: str, system_answer: str):
     return bleurt_scorer.score(references=[gold_answer], candidates=[system_answer])
