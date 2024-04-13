@@ -1,3 +1,4 @@
+import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -24,13 +25,27 @@ if embedding_to_use == "openai":
 if data_to_use == "ms_marco":
     # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
     df = pd.read_parquet('0000.parquet')
-    base_data = df.iloc[1000:1201]
+    base_data = df.iloc[1500:1520]
 
     passages_series = base_data["passages"]
     passages = passages_series.apply(lambda x: x['passage_text']).to_list()
     data = [chunk for list_of_chunks in passages for chunk in list_of_chunks]
 
     questions = base_data["query"].to_list()
+    answers = []
+    for item in base_data["answers"]:
+        if len(item)>0:
+            if isinstance(item, np.ndarray):
+                answers.append(item[0])
+            else:
+                answers.append(item)
+        else:
+            answers.append('')
+
+    print(f'amount of questions: {len(questions)}')
+    print(questions)
+    print(f'amount of answers: {len(answers)}')
+    print(answers)
 
     # Processing
     """create a vector representation of the provided texts using OpenAI embedding mode
@@ -57,8 +72,7 @@ Question: {question}
 """
 prompt = ChatPromptTemplate.from_template(template)
 
-chat_model = ChatOpenAI(openai_api_key=API_KEY)
-#chat_model = ChatOpenAI(openai_api_key=API_KEY, verbose=True)
+chat_model = ChatOpenAI(openai_api_key=API_KEY, verbose=False)
 
 chain = (
         {"context": retriever, "question": RunnablePassthrough()}
@@ -67,10 +81,29 @@ chain = (
         | StrOutputParser()
 )
 
-for question in questions:
-    answer = chain.invoke(question)
-    print(f'Question: {question}')
-    print(f'Answer: {answer} \n\n')
+rouge_scores_average = {
+    'rouge-1 (F-Score)': 0,
+    'rouge-2 (F-Score)': 0,
+    'rouge-l (F-Score)': 0
+}
+count = 0  # This will be used for all metrics
+
+for index, question in enumerate(questions):
+    gold_answer = answers[index]
+    if gold_answer:
+        system_answer = chain.invoke(question)
+        rouge_scores = utils.get_rouge_scores(system_answer, gold_answer)
+        for score in rouge_scores:
+            rouge_scores_average[score['Metric']] += score['Result']
+        count += 1
+        print(f'Question: {question}')
+        print(f'Answer by System: {system_answer} \n\n')
+        print(f'Gold Answer: {gold_answer} \n\n')
+        print(f'Rouge Scores: {rouge_scores}')
+
+for score_type in rouge_scores_average:
+    rouge_scores_average[score_type] /= count
+    print(f'{score_type} Average: {rouge_scores_average[score_type]}')
 
 
 

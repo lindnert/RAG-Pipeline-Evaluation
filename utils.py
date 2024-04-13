@@ -3,6 +3,8 @@ from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import CacheBackedEmbeddings
 from langchain.storage import LocalFileStore
+from rouge import Rouge
+
 
 def load_from_local() -> list:
     docs = []
@@ -29,3 +31,15 @@ def cache_embeddings(embeddings):
         embeddings, store, namespace=embeddings.model
     )
     return cached_embedder
+
+def get_rouge_scores(text1, text2):
+    if not text1 and text2:
+        return
+    rouge = Rouge()
+    rouge_scores_out = []
+    rouge_scores_raw = rouge.get_scores(text1, text2)
+    for metric in ["rouge-1", "rouge-2", "rouge-l"]:
+        for label in ["F-Score"]:
+            eval_score = rouge_scores_raw[0][metric][label[0].lower()]
+            rouge_scores_out.append({"Metric": f"{metric} ({label})", "Result": eval_score,})
+    return rouge_scores_out
