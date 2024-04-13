@@ -4,6 +4,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import CacheBackedEmbeddings
 from langchain.storage import LocalFileStore
 from rouge import Rouge
+from bleurt import score as bleurt_score
 
 
 def load_from_local() -> list:
@@ -32,7 +33,7 @@ def cache_embeddings(embeddings):
     )
     return cached_embedder
 
-def get_rouge_scores(text1, text2):
+def get_rouge_scores(text1: str, text2: str):
     if not text1 and text2:
         return
     rouge = Rouge()
@@ -43,3 +44,8 @@ def get_rouge_scores(text1, text2):
             eval_score = rouge_scores_raw[0][metric][label[0].lower()]
             rouge_scores_out.append({"Metric": f"{metric} ({label})", "Result": eval_score,})
     return rouge_scores_out
+
+def get_bleurt_score(gold_answer: str, system_answer: str):
+    checkpoint = "bleurt/BLEURT-20"
+    bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
+    return bleurt_scorer.score(references=[gold_answer], candidates=[system_answer])

@@ -8,6 +8,9 @@ from api_key import API_KEY
 import langchain
 import utils
 import pandas as pd
+from bert_score import score as bert_score
+
+
 #from datasets import load_dataset
 
 #langchain.debug = True
@@ -25,7 +28,7 @@ if embedding_to_use == "openai":
 if data_to_use == "ms_marco":
     # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
     df = pd.read_parquet('0000.parquet')
-    base_data = df.iloc[1500:1520]
+    base_data = df.iloc[1500:1501]
 
     passages_series = base_data["passages"]
     passages = passages_series.apply(lambda x: x['passage_text']).to_list()
@@ -86,6 +89,7 @@ rouge_scores_average = {
     'rouge-2 (F-Score)': 0,
     'rouge-l (F-Score)': 0
 }
+
 count = 0  # This will be used for all metrics
 
 for index, question in enumerate(questions):
@@ -95,6 +99,9 @@ for index, question in enumerate(questions):
         rouge_scores = utils.get_rouge_scores(system_answer, gold_answer)
         for score in rouge_scores:
             rouge_scores_average[score['Metric']] += score['Result']
+
+        bleurt_score = utils.get_bleurt_score(gold_answer, system_answer)
+        print(f'BLEURT Score: {bleurt_score}')
         count += 1
         print(f'Question: {question}')
         print(f'Answer by System: {system_answer} \n\n')
