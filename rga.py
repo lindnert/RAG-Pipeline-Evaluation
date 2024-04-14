@@ -1,3 +1,8 @@
+import nltk
+nltk.download('wordnet')
+nltk.download('punkt')
+from nltk.translate import meteor_score
+from nltk.tokenize import word_tokenize
 import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
@@ -94,6 +99,8 @@ bleurt_scores_avg = []
 
 bert_scores_avg = {"bert_P": 0, "bert_R": 0, "bert_F1": 0}
 
+meteor_score_avg = []
+
 checkpoint = "bleurt/BLEURT-20"
 bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
 
@@ -116,6 +123,12 @@ for index, question in enumerate(questions):
         bert_scores_avg["bert_R"] += bert_R
         bert_scores_avg["bert_F1"] += bert_F1
 
+        # Tokenize for METEOR
+        gold_answer_tok = word_tokenize(gold_answer)
+        system_answer_tok = word_tokenize(system_answer)
+        meteor_score_result = meteor_score.single_meteor_score(gold_answer_tok, system_answer_tok)
+        meteor_score_avg.append(meteor_score_result)
+
         count += 1
         print(f'Question: {question}')
         print(f'Answer by System: {system_answer}')
@@ -123,7 +136,8 @@ for index, question in enumerate(questions):
         print(f'Rouge Scores: {rouge_scores}')
         print(f'BLEURT Score: {bleurt_score}')
         print(f'BERT Precision, Recall and F1: {bert_P, bert_R, bert_F1}')
-        print('\n----------------------------------')
+        print(f'METEOR Score: {meteor_score_result}')
+        print('\n----------------------------------\n')
 
 for score_type in rouge_scores_avg:
     rouge_scores_avg[score_type] /= count
@@ -135,3 +149,6 @@ print(f'BLEURT Score Average: {bleurt_score_avg}')
 for score_type in bert_scores_avg:
     bert_scores_avg[score_type] /= count
     print(f'{score_type} Average: {bert_scores_avg[score_type]}')
+
+meteor_score_avg = sum(meteor_score_avg) / count
+print(f'METEOR Score Average: {meteor_score_avg}')
