@@ -8,8 +8,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from api_key import API_KEY
+from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
+from openai_api_key import OPENAI_API_KEY
+from mistral_api_key import MISTRAL_API_KEY
 import langchain
 import utils
 import pandas as pd
@@ -23,11 +26,17 @@ data = None
 questions = []
 
 data_to_use = "ms_marco"
-embedding_to_use = "openai"
+embedding_to_use = "mistral"
 
 if embedding_to_use == "openai":
-    embedding = OpenAIEmbeddings(openai_api_key=API_KEY, model="text-embedding-3-small")
-    cached_embedding = utils.cache_embeddings(embedding)
+    embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
+    chat_model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, verbose=False)
+
+elif embedding_to_use == "mistral":
+    embedding = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
+    chat_model = ChatMistralAI(api_key=MISTRAL_API_KEY)
+
+cached_embedding = utils.cache_embeddings(embedding)
 
 # Data
 if data_to_use == "ms_marco":
@@ -79,8 +88,6 @@ template = """Answer the question based only on the following context:
 Question: {question}
 """
 prompt = ChatPromptTemplate.from_template(template)
-
-chat_model = ChatOpenAI(openai_api_key=API_KEY, verbose=False)
 
 chain = (
         {"context": retriever, "question": RunnablePassthrough()}
