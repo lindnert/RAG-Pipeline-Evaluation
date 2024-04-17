@@ -8,12 +8,13 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
-from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
-from openai_api_key import OPENAI_API_KEY
-from mistral_api_key import MISTRAL_API_KEY
-import langchain
+from llamaapi import LlamaAPI
+from langchain_experimental.llms import ChatLlamaAPI
+from API_keys.openai_api_key import OPENAI_API_KEY
+from API_keys.mistral_api_key import MISTRAL_API_KEY
+from API_keys.llama_api_key import LLAMA_API_KEY
 import utils
 import pandas as pd
 from bert_score import score as bert_score
@@ -22,7 +23,13 @@ from bleurt import score as bleurt_score
 #from datasets import load_dataset
 
 dataset_options = ["ms_marco"]
-model_options = ["openai", "mistral"]
+model_options = ["openai", "mistral", "llama"]
+prompt_long = """"""
+prompt_short = """Answer the question based only on the following context:
+{context}
+
+Question: {question}
+"""
 
 #langchain.debug = True
 data = None
@@ -45,11 +52,16 @@ for dataset in dataset_options:
 
         if model_to_use == "openai":
             embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
-            chat_model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, verbose=False)
+            chat_model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0, verbose=False)
 
         elif model_to_use == "mistral":
             embedding = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
-            chat_model = ChatMistralAI(api_key=MISTRAL_API_KEY)
+            chat_model = ChatMistralAI(api_key=MISTRAL_API_KEY, temperature=0)
+
+        elif model_to_use == "llama":
+            embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
+            llama = LlamaAPI(LLAMA_API_KEY)
+            chat_model = ChatLlamaAPI(client=llama)
 
         cached_embedding = utils.cache_embeddings(embedding)
         print(f"Embedding and chat model: {model_to_use}\n")
@@ -58,7 +70,7 @@ for dataset in dataset_options:
         if dataset_to_use == "ms_marco":
             # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
             df = pd.read_parquet('0000.parquet')
-            base_data = df.iloc[1500:1503]
+            base_data = df.iloc[1600:1612]
 
             passages_series = base_data["passages"]
             passages = passages_series.apply(lambda x: x['passage_text']).to_list()
@@ -97,12 +109,18 @@ for dataset in dataset_options:
         print(f'Chunks in vectorstore: {vectorstore.index.ntotal}')
         retriever = vectorstore.as_retriever(k=4)
 
-        template = """Answer the question based only on the following context:
+        prompt_template = """Answer the question briefly, precisely and concisely \
+        based only the context provided to you. \
+        If the information required to answer the question is not contained in the provided context, \
+        return an empty string.
+                
+        Context:
         {context}
         
-        Question: {question}
+        Question:
+        {question}
         """
-        prompt = ChatPromptTemplate.from_template(template)
+        prompt = ChatPromptTemplate.from_template(prompt_template)
 
         chain = (
                 {"context": retriever, "question": RunnablePassthrough()}
