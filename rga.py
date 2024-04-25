@@ -47,6 +47,32 @@ except IOError as e:
 
 for dataset in dataset_options:
     dataset_to_use = dataset
+
+    # Data
+    if dataset_to_use == "ms_marco":
+        # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
+        df = pd.read_parquet('0000.parquet')
+        base_data = df.iloc[1500:1502]
+
+        passages_series = base_data["passages"]
+        passages = passages_series.apply(lambda x: x['passage_text']).to_list()
+        data = [chunk for list_of_chunks in passages for chunk in list_of_chunks]
+
+        questions = base_data["query"].to_list()
+        for item in base_data["answers"]:
+            if len(item) > 0:
+                if isinstance(item, np.ndarray):
+                    answers.append(item[0])
+                else:
+                    answers.append(item)
+            else:
+                answers.append('')
+
+        print(f'amount of questions: {len(questions)}')
+        print(questions)
+        print(f'amount of gold answers: {len(answers)}')
+        print(answers)
+
     for model in model_options:
         model_to_use = model
 
@@ -68,48 +94,13 @@ for dataset in dataset_options:
             chat_model_to_use = model_to_use
 
         cached_embedding = utils.cache_embeddings(embedding)
-        print(f"Embedding model: {model_to_use}\n")
-        print(f"Chat model: {model_to_use}\n")
+        print(f"Embedding model: {embedding_to_use}\n")
+        print(f"Chat model: {chat_model_to_use}\n")
 
-        # Data
-        if dataset_to_use == "ms_marco":
-            # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
-            df = pd.read_parquet('0000.parquet')
-            base_data = df.iloc[1500:1501]
-
-            passages_series = base_data["passages"]
-            passages = passages_series.apply(lambda x: x['passage_text']).to_list()
-            data = [chunk for list_of_chunks in passages for chunk in list_of_chunks]
-
-            questions = base_data["query"].to_list()
-            for item in base_data["answers"]:
-                if len(item)>0:
-                    if isinstance(item, np.ndarray):
-                        answers.append(item[0])
-                    else:
-                        answers.append(item)
-                else:
-                    answers.append('')
-
-            print(f'amount of questions: {len(questions)}')
-            print(questions)
-            print(f'amount of gold answers: {len(answers)}')
-            print(answers)
-
-            # Processing
-            """create a vector representation of the provided texts using OpenAI embedding mode
-            and stores them in the FAISS index for efficient retrieval."""
-            vectorstore = FAISS.from_texts(data, embedding=cached_embedding)
-
-        elif dataset_to_use == "local":
-            questions = ["How can RAG pipelines be evaluated?"]
-            docs = utils.load_from_local()
-            data = utils.chunk(docs)
-
-            # Processing
-            """create a vector representation of the provided texts using OpenAI embedding mode
-            and stores them in the FAISS index for efficient retrieval."""
-            vectorstore = FAISS.from_documents(data, embedding=cached_embedding)
+        # Processing
+        """create a vector representation of the provided texts using OpenAI embedding mode
+        and stores them in the FAISS index for efficient retrieval."""
+        vectorstore = FAISS.from_texts(data, embedding=cached_embedding)
 
         print(f'Chunks in vectorstore: {vectorstore.index.ntotal}')
         retriever = vectorstore.as_retriever(k=4)
