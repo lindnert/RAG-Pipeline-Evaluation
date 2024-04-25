@@ -53,6 +53,7 @@ for dataset in dataset_options:
         # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
         df = pd.read_parquet('0000.parquet')
         base_data = df.iloc[1500:1502]
+        base_data_length = len(base_data)
 
         passages_series = base_data["passages"]
         passages = passages_series.apply(lambda x: x['passage_text']).to_list()
@@ -177,7 +178,7 @@ for dataset in dataset_options:
 
         try:
             with open("evaluation_results.txt", "a") as file:
-                file.write(f"Dataset: {dataset_to_use}\n")
+                file.write(f"Dataset and Size: {dataset_to_use} ({base_data_length})\n")
                 file.write(f"Embedding model: {embedding_to_use}\n")
                 file.write(f"Chat model: {chat_model_to_use}\n")
                 for score_type in rouge_avg:
