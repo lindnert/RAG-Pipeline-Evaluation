@@ -53,24 +53,29 @@ for dataset in dataset_options:
         if model_to_use == "openai":
             embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
             chat_model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0, verbose=False)
+            embedding_to_use, chat_model_to_use = model_to_use, model_to_use
 
         elif model_to_use == "mistral":
             embedding = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
             chat_model = ChatMistralAI(api_key=MISTRAL_API_KEY, temperature=0)
+            embedding_to_use, chat_model_to_use = model_to_use, model_to_use
 
         elif model_to_use == "llama":
             embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
             llama = LlamaAPI(LLAMA_API_KEY)
             chat_model = ChatLlamaAPI(client=llama)
+            embedding_to_use = "openai"
+            chat_model_to_use = model_to_use
 
         cached_embedding = utils.cache_embeddings(embedding)
-        print(f"Embedding and chat model: {model_to_use}\n")
+        print(f"Embedding model: {model_to_use}\n")
+        print(f"Chat model: {model_to_use}\n")
 
         # Data
         if dataset_to_use == "ms_marco":
             # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
             df = pd.read_parquet('0000.parquet')
-            base_data = df.iloc[1600:1612]
+            base_data = df.iloc[1500:1501]
 
             passages_series = base_data["passages"]
             passages = passages_series.apply(lambda x: x['passage_text']).to_list()
@@ -182,7 +187,8 @@ for dataset in dataset_options:
         try:
             with open("evaluation_results.txt", "a") as file:
                 file.write(f"Dataset: {dataset_to_use}\n")
-                file.write(f"Embedding and chat model: {model_to_use}\n")
+                file.write(f"Embedding model: {embedding_to_use}\n")
+                file.write(f"Chat model: {chat_model_to_use}\n")
                 for score_type in rouge_avg:
                     rouge_avg[score_type] /= count
                     file.write(f'{score_type} Average: {rouge_avg[score_type]}\n')
