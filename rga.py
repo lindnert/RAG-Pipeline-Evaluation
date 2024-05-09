@@ -52,12 +52,12 @@ for dataset in dataset_options:
     if dataset_to_use == "ms_marco":
         # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
         df = pd.read_parquet('0000.parquet')
-        base_data = df.iloc[1500:1502]
+        base_data = df.iloc[1800:2000]
         base_data_length = len(base_data)
 
         passages_series = base_data["passages"]
         passages = passages_series.apply(lambda x: x['passage_text']).to_list()
-        data = [chunk for list_of_chunks in passages for chunk in list_of_chunks]
+        data = list(set([chunk for list_of_chunks in passages for chunk in list_of_chunks]))
 
         questions = base_data["query"].to_list()
         for item in base_data["answers"]:
