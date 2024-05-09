@@ -4,8 +4,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import CacheBackedEmbeddings
 from langchain.storage import LocalFileStore
 from rouge import Rouge
-from bleurt import score as bleurt_score
+from sentence_transformers import SentenceTransformer, util
 
+sas_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def load_from_local() -> list:
     docs = []
@@ -47,3 +48,12 @@ def get_rouge_scores(text1: str, text2: str):
 
 def get_bleurt_score(bleurt_scorer, gold_answer: str, system_answer: str):
     return bleurt_scorer.score(references=[gold_answer], candidates=[system_answer])
+
+def get_sas_embeddings(text):
+    return sas_model.encode(text, convert_to_tensor=True)
+
+def calculate_sas(answer1, answer2):
+    embeddings1 = get_sas_embeddings(answer1)
+    embeddings2 = get_sas_embeddings(answer2)
+    cosine_scores = util.pytorch_cos_sim(embeddings1, embeddings2)
+    return cosine_scores.item()

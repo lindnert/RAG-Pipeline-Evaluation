@@ -19,6 +19,7 @@ import utils
 import pandas as pd
 from bert_score import score as bert_score
 from bleurt import score as bleurt_score
+import time
 
 #from datasets import load_dataset
 
@@ -48,11 +49,13 @@ except IOError as e:
 for dataset in dataset_options:
     dataset_to_use = dataset
 
+    start_time = time.time()
+
     # Data
     if dataset_to_use == "ms_marco":
         # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
         df = pd.read_parquet('0000.parquet')
-        base_data = df.iloc[1800:2000]
+        base_data = df.iloc[1800:1805]
         base_data_length = len(base_data)
 
         passages_series = base_data["passages"]
@@ -74,8 +77,11 @@ for dataset in dataset_options:
         print(f'amount of gold answers: {len(answers)}')
         print(answers)
 
+        print(f"Elapsed time for loading data: {time.time() - start_time} seconds")
+
     for model in model_options:
         model_to_use = model
+        start_time = time.time()
 
         if model_to_use == "openai":
             embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
@@ -126,6 +132,8 @@ for dataset in dataset_options:
                 | StrOutputParser()
         )
 
+        print(f"Elapsed time for loading model: {time.time() - start_time} seconds")
+
         rouge_avg = {
             'rouge-1 (F-Score)': 0,
             'rouge-2 (F-Score)': 0,
@@ -146,7 +154,11 @@ for dataset in dataset_options:
         for index, question in enumerate(questions):
             gold_answer = answers[index]
             if gold_answer:
+                start_time = time.time()
                 system_answer = chain.invoke(question)
+                print(f"Elapsed time for creating system answer: {time.time() - start_time} seconds")
+
+                start_time = time.time()
                 rouge_scores = utils.get_rouge_scores(system_answer, gold_answer)
                 for score in rouge_scores:
                     rouge_avg[score['Metric']] += score['Result']
@@ -159,6 +171,8 @@ for dataset in dataset_options:
                 bert_avg["bert_P"] += bert_P
                 bert_avg["bert_R"] += bert_R
                 bert_avg["bert_F1"] += bert_F1
+
+                sas_score = utils.calculate_sas(system_answer, gold_answer)
 
                 # Tokenize for METEOR
                 gold_answer_tok = word_tokenize(gold_answer)
@@ -174,7 +188,11 @@ for dataset in dataset_options:
                 print(f'BLEURT Score: {bleurt_results}')
                 print(f'BERT Precision, Recall and F1: {bert_P, bert_R, bert_F1}')
                 print(f'METEOR Score: {meteor_score_result}')
+                print(f'SAS Score: {sas_score}')
                 print('\n----------------------------------\n')
+
+                print(f"Elapsed time for creating metrics: {time.time() - start_time} seconds")
+                start_time = time.time()
 
         try:
             with open("evaluation_results.txt", "a") as file:
@@ -195,10 +213,14 @@ for dataset in dataset_options:
                 meteor_avg = sum(meteor_avg) / count
                 file.write(f'METEOR Score Average: {meteor_avg}\n')
 
+                file.write(f'SAS Score: {sas_score}\n')
+
                 file.write('\n\n')
 
             print(f"Results saved to evaluation_results.txt")
             print('\n\n----------------------------------\n----------------------------------\n\n')
+
+            print(f"Elapsed time for writing results: {time.time() - start_time} seconds")
 
         except IOError as e:
             print(f"An error occurred while writing to the file: {e}")
