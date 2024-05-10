@@ -1,4 +1,10 @@
+import os
+from API_keys.openai_api_key import OPENAI_API_KEY
+from API_keys.mistral_api_key import MISTRAL_API_KEY
+from API_keys.llama_api_key import LLAMA_API_KEY
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 import nltk
+from datasets import Dataset
 nltk.download('wordnet')
 nltk.download('punkt')
 from nltk.translate import meteor_score
@@ -12,9 +18,6 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 from llamaapi import LlamaAPI
 from langchain_experimental.llms import ChatLlamaAPI
-from API_keys.openai_api_key import OPENAI_API_KEY
-from API_keys.mistral_api_key import MISTRAL_API_KEY
-from API_keys.llama_api_key import LLAMA_API_KEY
 import utils
 import pandas as pd
 from bert_score import score as bert_score
@@ -45,7 +48,7 @@ embedding = None
 vectorstore = None
 chat_model = None
 questions = []
-answers = []
+gold_answers = []
 
 try:
     with open("evaluation_results.txt", "w") as file:
@@ -62,7 +65,7 @@ for dataset in dataset_options:
     if dataset_to_use == "ms_marco":
         # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
         df = pd.read_parquet('0000.parquet')
-        base_data = df.iloc[1800:1805]
+        base_data = df.iloc[1800:1801]
         base_data_length = len(base_data)
 
         passages_series = base_data["passages"]
@@ -73,16 +76,16 @@ for dataset in dataset_options:
         for item in base_data["answers"]:
             if len(item) > 0:
                 if isinstance(item, np.ndarray):
-                    answers.append(item[0])
+                    gold_answers.append(item[0])
                 else:
-                    answers.append(item)
+                    gold_answers.append(item)
             else:
-                answers.append('')
+                gold_answers.append('')
 
         print(f'amount of questions: {len(questions)}')
         print(questions)
-        print(f'amount of gold answers: {len(answers)}')
-        print(answers)
+        print(f'amount of gold answers: {len(gold_answers)}')
+        print(gold_answers)
 
         print(f"Elapsed time for loading data: {time.time() - start_time} seconds")
 
@@ -146,21 +149,30 @@ for dataset in dataset_options:
             'rouge-2 (F-Score)': 0,
             'rouge-l (F-Score)': 0
         }
-
         bleurt_avg = []
         checkpoint = "bleurt/BLEURT-20"
         bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
         bert_avg = {"bert_P": 0, "bert_R": 0, "bert_F1": 0}
         meteor_avg = []
         sas_avg = []
+        ragas_avg = {
+            'faithfulness': 0.0,
+            'answer_relevancy': 0.0,
+            'context_recall': 0.0,
+            'context_precision': 0.0
+        }
 
+        system_answers = []
+        contexts = []
         count = 0  # This will be used for all metrics
 
-        for index, question in enumerate(questions):
-            gold_answer = answers[index]
+        for index, query in enumerate(questions):
+            gold_answer = gold_answers[index]
             if gold_answer:
                 start_time = time.time()
-                system_answer = chain.invoke(question)
+                system_answer = chain.invoke(query)
+                system_answers.append(system_answer)
+                contexts.append([docs.page_content for docs in retriever.get_relevant_documents(query)])
                 print(f"Elapsed time for creating system answer: {time.time() - start_time} seconds")
 
                 start_time = time.time()
@@ -178,7 +190,7 @@ for dataset in dataset_options:
                 bert_avg["bert_F1"] += bert_F1
 
                 sas_score = utils.calculate_sas(system_answer, gold_answer)
-                sas_avg.extend(sas_score)
+                sas_avg.append(sas_score)
 
                 # Tokenize for METEOR
                 gold_answer_tok = word_tokenize(gold_answer)
@@ -186,8 +198,10 @@ for dataset in dataset_options:
                 meteor_score_result = meteor_score.single_meteor_score(gold_answer_tok, system_answer_tok)
                 meteor_avg.append(meteor_score_result)
 
+                # Convert to dataset for RAGAS
+
                 count += 1
-                print(f'Question: {question}')
+                print(f'Question: {query}')
                 print(f'System Answer: {system_answer}')
                 print(f'Gold Answer: {gold_answer}\n')
                 print(f'Rouge Scores: {rouge_scores}')
@@ -195,6 +209,7 @@ for dataset in dataset_options:
                 print(f'BERT Precision, Recall and F1: {bert_P, bert_R, bert_F1}')
                 print(f'METEOR Score: {meteor_score_result}')
                 print(f'SAS Score: {sas_score}')
+                print(f'RAGAS Score: will be calculated at the end')
                 print('\n----------------------------------\n')
 
                 print(f"Elapsed time for creating metrics: {time.time() - start_time} seconds")
@@ -221,6 +236,26 @@ for dataset in dataset_options:
 
                 sas_avg = sum(sas_avg) / count
                 file.write(f'SAS Score: {sas_avg}\n')
+
+                ragas_dict = {
+                    "question": questions,
+                    "answer": system_answers,
+                    "contexts": contexts,
+                    "ground_truth": gold_answers
+                }
+                ragas_dataset = Dataset.from_dict(ragas_dict)
+                ragas_scores = ragas_evaluate(
+                    dataset=ragas_dataset,
+                    metrics=[
+                        context_precision,
+                        context_recall,
+                        faithfulness,
+                        answer_relevancy,
+                    ]
+                )
+                file.write(f'RAGAS Scores: ')
+                for name, number in ragas_scores.items():
+                    file.write(f'{name}: {number}, ')
 
                 file.write('\n\n')
 
