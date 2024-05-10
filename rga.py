@@ -19,6 +19,13 @@ import utils
 import pandas as pd
 from bert_score import score as bert_score
 from bleurt import score as bleurt_score
+from ragas import evaluate as ragas_evaluate
+from ragas.metrics import (
+    faithfulness,
+    answer_relevancy,
+    context_recall,
+    context_precision,
+)
 import time
 
 #from datasets import load_dataset
@@ -143,11 +150,9 @@ for dataset in dataset_options:
         bleurt_avg = []
         checkpoint = "bleurt/BLEURT-20"
         bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
-
         bert_avg = {"bert_P": 0, "bert_R": 0, "bert_F1": 0}
-
         meteor_avg = []
-
+        sas_avg = []
 
         count = 0  # This will be used for all metrics
 
@@ -173,6 +178,7 @@ for dataset in dataset_options:
                 bert_avg["bert_F1"] += bert_F1
 
                 sas_score = utils.calculate_sas(system_answer, gold_answer)
+                sas_avg.extend(sas_score)
 
                 # Tokenize for METEOR
                 gold_answer_tok = word_tokenize(gold_answer)
@@ -213,7 +219,8 @@ for dataset in dataset_options:
                 meteor_avg = sum(meteor_avg) / count
                 file.write(f'METEOR Score Average: {meteor_avg}\n')
 
-                file.write(f'SAS Score: {sas_score}\n')
+                sas_avg = sum(sas_avg) / count
+                file.write(f'SAS Score: {sas_avg}\n')
 
                 file.write('\n\n')
 
