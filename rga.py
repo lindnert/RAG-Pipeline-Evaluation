@@ -34,13 +34,8 @@ import time
 #from datasets import load_dataset
 
 dataset_options = ["ms_marco"]
-model_options = ["openai", "mistral", "llama"]
-prompt_long = """"""
-prompt_short = """Answer the question based only on the following context:
-{context}
-
-Question: {question}
-"""
+embedding_model_options = ["openai", "mistral"]
+generation_model_options = ["openai", "mistral", "llama"]
 
 #langchain.debug = True
 data = None
@@ -50,6 +45,19 @@ chat_model = None
 questions = []
 gold_answers = []
 
+prompt_template = """Answer the question briefly, precisely and concisely \
+based only the context provided to you. \
+If the information required to answer the question is not contained in the provided context, \
+return an empty string.
+
+Context:
+{context}
+
+Question:
+{question}
+"""
+prompt = ChatPromptTemplate.from_template(prompt_template)
+
 try:
     with open("evaluation_results.txt", "w") as file:
         file.write("Evaluation results:\n\n")
@@ -57,15 +65,14 @@ except IOError as e:
     print(f"An error occurred while writing to the file: {e}")
 
 for dataset in dataset_options:
-    dataset_to_use = dataset
 
     start_time = time.time()
 
     # Data
-    if dataset_to_use == "ms_marco":
+    if dataset == "ms_marco":
         # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
         df = pd.read_parquet('0000.parquet')
-        base_data = df.iloc[1800:1801]
+        base_data = df.iloc[1800:1802]
         base_data_length = len(base_data)
 
         passages_series = base_data["passages"]
@@ -89,180 +96,167 @@ for dataset in dataset_options:
 
         print(f"Elapsed time for loading data: {time.time() - start_time} seconds")
 
-    for model in model_options:
-        model_to_use = model
+    for embedding_model in embedding_model_options:
         start_time = time.time()
 
-        if model_to_use == "openai":
+        if embedding_model == "openai":
             embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
-            chat_model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0, verbose=False)
-            embedding_to_use, chat_model_to_use = model_to_use, model_to_use
 
-        elif model_to_use == "mistral":
+        elif embedding_model == "mistral":
             embedding = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
-            chat_model = ChatMistralAI(api_key=MISTRAL_API_KEY, temperature=0)
-            embedding_to_use, chat_model_to_use = model_to_use, model_to_use
-
-        elif model_to_use == "llama":
-            embedding = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small")
-            llama = LlamaAPI(LLAMA_API_KEY)
-            chat_model = ChatLlamaAPI(client=llama)
-            embedding_to_use = "openai"
-            chat_model_to_use = model_to_use
 
         cached_embedding = utils.cache_embeddings(embedding)
-        print(f"Embedding model: {embedding_to_use}\n")
-        print(f"Chat model: {chat_model_to_use}\n")
+        print(f"Embedding model: {embedding_model}\n")
 
-        # Processing
-        """create a vector representation of the provided texts using OpenAI embedding mode
-        and stores them in the FAISS index for efficient retrieval."""
-        vectorstore = FAISS.from_texts(data, embedding=cached_embedding)
+        for generation_model in generation_model_options:
 
-        print(f'Chunks in vectorstore: {vectorstore.index.ntotal}')
-        retriever = vectorstore.as_retriever(k=4)
+            if generation_model == "openai":
+                chat_model = ChatOpenAI(openai_api_key=OPENAI_API_KEY, temperature=0, verbose=False)
 
-        prompt_template = """Answer the question briefly, precisely and concisely \
-        based only the context provided to you. \
-        If the information required to answer the question is not contained in the provided context, \
-        return an empty string.
-                
-        Context:
-        {context}
-        
-        Question:
-        {question}
-        """
-        prompt = ChatPromptTemplate.from_template(prompt_template)
+            elif generation_model == "mistral":
+                chat_model = ChatMistralAI(api_key=MISTRAL_API_KEY, temperature=0)
 
-        chain = (
-                {"context": retriever, "question": RunnablePassthrough()}
-                | prompt
-                | chat_model
-                | StrOutputParser()
-        )
+            elif generation_model == "llama":
+                chat_model = ChatLlamaAPI(client=LlamaAPI(LLAMA_API_KEY), temperature=0)
 
-        print(f"Elapsed time for loading model: {time.time() - start_time} seconds")
+            print(f"Chat model: {generation_model}\n")
 
-        rouge_avg = {
-            'rouge-1 (F-Score)': 0,
-            'rouge-2 (F-Score)': 0,
-            'rouge-l (F-Score)': 0
-        }
-        bleurt_avg = []
-        checkpoint = "bleurt/BLEURT-20"
-        bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
-        bert_avg = {"bert_P": 0, "bert_R": 0, "bert_F1": 0}
-        meteor_avg = []
-        sas_avg = []
-        ragas_avg = {
-            'faithfulness': 0.0,
-            'answer_relevancy': 0.0,
-            'context_recall': 0.0,
-            'context_precision': 0.0
-        }
+            # Processing
+            """create a vector representation of the provided texts using OpenAI embedding mode
+            and stores them in the FAISS index for efficient retrieval."""
+            vectorstore = FAISS.from_texts(data, embedding=cached_embedding)
 
-        system_answers = []
-        contexts = []
-        count = 0  # This will be used for all metrics
+            print(f'Chunks in vectorstore: {vectorstore.index.ntotal}')
+            retriever = vectorstore.as_retriever(k=4)
 
-        for index, query in enumerate(questions):
-            gold_answer = gold_answers[index]
-            if gold_answer:
-                start_time = time.time()
-                system_answer = chain.invoke(query)
-                system_answers.append(system_answer)
-                contexts.append([docs.page_content for docs in retriever.get_relevant_documents(query)])
-                print(f"Elapsed time for creating system answer: {time.time() - start_time} seconds")
+            chain = (
+                    {"context": retriever, "question": RunnablePassthrough()}
+                    | prompt
+                    | chat_model
+                    | StrOutputParser()
+            )
 
-                start_time = time.time()
-                rouge_scores = utils.get_rouge_scores(system_answer, gold_answer)
-                for score in rouge_scores:
-                    rouge_avg[score['Metric']] += score['Result']
+            print(f"Elapsed time for loading model: {time.time() - start_time} seconds")
 
-                bleurt_results = utils.get_bleurt_score(bleurt_scorer, gold_answer, system_answer)
-                bleurt_avg.extend(bleurt_results)
+            rouge_avg = {
+                'rouge-1 (F-Score)': 0,
+                'rouge-2 (F-Score)': 0,
+                'rouge-l (F-Score)': 0
+            }
+            bleurt_avg = []
+            checkpoint = "bleurt/BLEURT-20"
+            bleurt_scorer = bleurt_score.BleurtScorer(checkpoint)
+            bert_avg = {"bert_P": 0, "bert_R": 0, "bert_F1": 0}
+            meteor_avg = []
+            sas_avg = []
+            ragas_avg = {
+                'faithfulness': 0.0,
+                'answer_relevancy': 0.0,
+                'context_recall': 0.0,
+                'context_precision': 0.0
+            }
 
-                bert_P, bert_R, bert_F1 = bert_score([system_answer], [gold_answer], lang="en", model_type="bert-base-uncased")
-                bert_P, bert_R, bert_F1 = bert_P.item(), bert_R.item(), bert_F1.item()
-                bert_avg["bert_P"] += bert_P
-                bert_avg["bert_R"] += bert_R
-                bert_avg["bert_F1"] += bert_F1
+            system_answers = []
+            contexts = []
+            count = 0  # This will be used for all metrics
 
-                sas_score = utils.calculate_sas(system_answer, gold_answer)
-                sas_avg.append(sas_score)
+            for index, query in enumerate(questions):
+                gold_answer = gold_answers[index]
+                if gold_answer:
+                    start_time = time.time()
+                    system_answer = chain.invoke(query)
+                    system_answers.append(system_answer)
+                    contexts.append([docs.page_content for docs in retriever.get_relevant_documents(query)])
+                    print(f"Elapsed time for creating system answer: {time.time() - start_time} seconds")
 
-                # Tokenize for METEOR
-                gold_answer_tok = word_tokenize(gold_answer)
-                system_answer_tok = word_tokenize(system_answer)
-                meteor_score_result = meteor_score.single_meteor_score(gold_answer_tok, system_answer_tok)
-                meteor_avg.append(meteor_score_result)
+                    start_time = time.time()
+                    rouge_scores = utils.get_rouge_scores(system_answer, gold_answer)
+                    for score in rouge_scores:
+                        rouge_avg[score['Metric']] += score['Result']
 
-                # Convert to dataset for RAGAS
+                    bleurt_results = utils.get_bleurt_score(bleurt_scorer, gold_answer, system_answer)
+                    bleurt_avg.extend(bleurt_results)
 
-                count += 1
-                print(f'Question: {query}')
-                print(f'System Answer: {system_answer}')
-                print(f'Gold Answer: {gold_answer}\n')
-                print(f'Rouge Scores: {rouge_scores}')
-                print(f'BLEURT Score: {bleurt_results}')
-                print(f'BERT Precision, Recall and F1: {bert_P, bert_R, bert_F1}')
-                print(f'METEOR Score: {meteor_score_result}')
-                print(f'SAS Score: {sas_score}')
-                print(f'RAGAS Score: will be calculated at the end')
-                print('\n----------------------------------\n')
+                    bert_P, bert_R, bert_F1 = bert_score([system_answer], [gold_answer], lang="en", model_type="bert-base-uncased")
+                    bert_P, bert_R, bert_F1 = bert_P.item(), bert_R.item(), bert_F1.item()
+                    bert_avg["bert_P"] += bert_P
+                    bert_avg["bert_R"] += bert_R
+                    bert_avg["bert_F1"] += bert_F1
 
-                print(f"Elapsed time for creating metrics: {time.time() - start_time} seconds")
-                start_time = time.time()
+                    sas_score = utils.calculate_sas(system_answer, gold_answer)
+                    sas_avg.append(sas_score)
 
-        try:
-            with open("evaluation_results.txt", "a") as file:
-                file.write(f"Dataset and Size: {dataset_to_use} ({base_data_length})\n")
-                file.write(f"Embedding model: {embedding_to_use}\n")
-                file.write(f"Chat model: {chat_model_to_use}\n")
-                for score_type in rouge_avg:
-                    rouge_avg[score_type] /= count
-                    file.write(f'{score_type} Average: {rouge_avg[score_type]}\n')
+                    # Tokenize for METEOR
+                    gold_answer_tok = word_tokenize(gold_answer)
+                    system_answer_tok = word_tokenize(system_answer)
+                    meteor_score_result = meteor_score.single_meteor_score(gold_answer_tok, system_answer_tok)
+                    meteor_avg.append(meteor_score_result)
 
-                bleurt_score_avg = sum(bleurt_avg) / count
-                file.write(f'BLEURT Score Average: {bleurt_score_avg}\n')
+                    # Convert to dataset for RAGAS
 
-                for score_type in bert_avg:
-                    bert_avg[score_type] /= count
-                    file.write(f'{score_type} Average: {bert_avg[score_type]}\n')
+                    count += 1
+                    print(f'Question: {query}')
+                    print(f'System Answer: {system_answer}')
+                    print(f'Gold Answer: {gold_answer}\n')
+                    print(f'Rouge Scores: {rouge_scores}')
+                    print(f'BLEURT Score: {bleurt_results}')
+                    print(f'BERT Precision, Recall and F1: {bert_P, bert_R, bert_F1}')
+                    print(f'METEOR Score: {meteor_score_result}')
+                    print(f'SAS Score: {sas_score}')
+                    print(f'RAGAS Score: will be calculated at the end')
+                    print('\n----------------------------------\n')
 
-                meteor_avg = sum(meteor_avg) / count
-                file.write(f'METEOR Score Average: {meteor_avg}\n')
+                    print(f"Elapsed time for creating metrics: {time.time() - start_time} seconds")
+                    start_time = time.time()
 
-                sas_avg = sum(sas_avg) / count
-                file.write(f'SAS Score: {sas_avg}\n')
+            try:
+                with open("evaluation_results.txt", "a") as file:
+                    file.write(f"Dataset and Size: {dataset} ({base_data_length})\n")
+                    file.write(f"Embedding model: {embedding_model}\n")
+                    file.write(f"Generation model: {generation_model}\n")
+                    for score_type in rouge_avg:
+                        rouge_avg[score_type] /= count
+                        file.write(f'{score_type} Average: {rouge_avg[score_type]}\n')
 
-                ragas_dict = {
-                    "question": questions,
-                    "answer": system_answers,
-                    "contexts": contexts,
-                    "ground_truth": gold_answers
-                }
-                ragas_dataset = Dataset.from_dict(ragas_dict)
-                ragas_scores = ragas_evaluate(
-                    dataset=ragas_dataset,
-                    metrics=[
-                        context_precision,
-                        context_recall,
-                        faithfulness,
-                        answer_relevancy,
-                    ]
-                )
-                file.write(f'RAGAS Scores: ')
-                for name, number in ragas_scores.items():
-                    file.write(f'{name}: {number}, ')
+                    for score_type in bert_avg:
+                        bert_avg[score_type] /= count
+                        file.write(f'{score_type} Average: {bert_avg[score_type]}\n')
 
-                file.write('\n\n')
+                    meteor_avg = sum(meteor_avg) / count
+                    file.write(f'METEOR Score Average: {meteor_avg}\n')
 
-            print(f"Results saved to evaluation_results.txt")
-            print('\n\n----------------------------------\n----------------------------------\n\n')
+                    bleurt_score_avg = sum(bleurt_avg) / count
+                    file.write(f'BLEURT Score Average: {bleurt_score_avg}\n')
 
-            print(f"Elapsed time for writing results: {time.time() - start_time} seconds")
+                    sas_avg = sum(sas_avg) / count
+                    file.write(f'SAS Score Average: {sas_avg}\n')
 
-        except IOError as e:
-            print(f"An error occurred while writing to the file: {e}")
+                    ragas_dict = {
+                        "question": questions,
+                        "answer": system_answers,
+                        "contexts": contexts,
+                        "ground_truth": gold_answers
+                    }
+                    ragas_dataset = Dataset.from_dict(ragas_dict)
+                    ragas_scores = ragas_evaluate(
+                        dataset=ragas_dataset,
+                        metrics=[
+                            context_precision,
+                            context_recall,
+                            faithfulness,
+                            answer_relevancy,
+                        ]
+                    )
+                    file.write(f'RAGAS Scores: ')
+                    for name, number in ragas_scores.items():
+                        file.write(f'{name}: {number}, ')
+
+                    file.write('\n\n')
+
+                print(f"Results saved to evaluation_results.txt")
+                print('\n\n----------------------------------\n----------------------------------\n\n')
+
+                print(f"Elapsed time for writing results: {time.time() - start_time} seconds")
+
+            except IOError as e:
+                print(f"An error occurred while writing to the file: {e}")

@@ -1,3 +1,12 @@
+prompt_long = """"""
+prompt_short = """Answer the question based only on the following context:
+{context}
+
+Question: {question}
+"""
+
+
+
 # def limit_prompt(prompt, max_size):
 #     # Split the prompt into context and question
 #     context, question = prompt['context'], prompt['question']
