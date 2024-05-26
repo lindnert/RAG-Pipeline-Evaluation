@@ -48,7 +48,7 @@ gold_answers = []
 prompt_template = """Answer the question briefly, precisely and concisely \
 based only the context provided to you. \
 If the information required to answer the question is not contained in the provided context, \
-return an empty string.
+return 'Unable to answer'.
 
 Context:
 {context}
@@ -57,6 +57,8 @@ Question:
 {question}
 """
 prompt = ChatPromptTemplate.from_template(prompt_template)
+
+#ragas_model = ChatLlamaAPI(client=LlamaAPI(LLAMA_API_KEY))
 
 try:
     with open("evaluation_results.txt", "w") as file:
@@ -72,7 +74,7 @@ for dataset in dataset_options:
     if dataset == "ms_marco":
         # data = load_dataset(dataset_name="ms_marco", version="v2.1", split="test")
         df = pd.read_parquet('0000.parquet')
-        base_data = df.iloc[1800:1802]
+        base_data = df.iloc[1500:1700]
         base_data_length = len(base_data)
 
         passages_series = base_data["passages"]
@@ -87,7 +89,7 @@ for dataset in dataset_options:
                 else:
                     gold_answers.append(item)
             else:
-                gold_answers.append('')
+                gold_answers.append('Unable to answer')
 
         print(f'amount of questions: {len(questions)}')
         print(questions)
@@ -127,7 +129,7 @@ for dataset in dataset_options:
             vectorstore = FAISS.from_texts(data, embedding=cached_embedding)
 
             print(f'Chunks in vectorstore: {vectorstore.index.ntotal}')
-            retriever = vectorstore.as_retriever(k=4)
+            retriever = vectorstore.as_retriever(k=3)
 
             chain = (
                     {"context": retriever, "question": RunnablePassthrough()}
@@ -231,7 +233,7 @@ for dataset in dataset_options:
                     sas_avg = sum(sas_avg) / count
                     file.write(f'SAS Score Average: {sas_avg}\n')
 
-                    ragas_dict = {
+                    """ragas_dict = {
                         "question": questions,
                         "answer": system_answers,
                         "contexts": contexts,
@@ -245,12 +247,13 @@ for dataset in dataset_options:
                             context_recall,
                             faithfulness,
                             answer_relevancy,
-                        ]
+                        ],
+                        #llm=ragas_model
                     )
                     file.write(f'RAGAS Scores: ')
                     for name, number in ragas_scores.items():
                         file.write(f'{name}: {number}, ')
-
+                    """
                     file.write('\n\n')
 
                 print(f"Results saved to evaluation_results.txt")
